@@ -3,8 +3,18 @@ import sys
 import csv
 
 files = [
-    "cpu_run2.csv",
-    "cpu_run3.csv"
+    "l1i_run1.csv",
+    "l1i_run2.csv",
+    "l1i_run3.csv",
+    "llc_run1.csv",
+    "llc_run2.csv",
+    "llc_run3.csv",
+    "l2_run1.csv",
+    "l2_run2.csv",
+    "l2_run3.csv",
+    "mem_run1.csv",
+    "mem_run2.csv",
+    "mem_run3.csv"
 ]
 
 def convert_to_csv(input_file, output_file):

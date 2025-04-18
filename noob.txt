@@ -1,0 +1,7 @@
+radix: 4GB
+dedup: 1.4GB 
+canneal: 1 GB
+freqmine: 700 MB, 
+blackscholes: 600 MB
+ferret: 200 MB
+vips: 100 MB

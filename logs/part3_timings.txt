@@ -1,0 +1,75 @@
+RUN 0
+
+Job:  parsec-blackscholes
+Job time:  0:01:20
+Job:  parsec-canneal
+Job time:  0:03:42
+Job:  parsec-dedup
+Job time:  0:00:45
+Job:  parsec-ferret
+Job time:  0:02:53
+Job:  parsec-freqmine
+Job time:  0:02:17
+Job:  parsec-radix
+Job time:  0:00:18
+Job:  parsec-vips
+Job time:  0:01:54
+Job:  memcached
+Total time: 0:03:43
+
+RUN 1
+
+Job:  parsec-blackscholes
+Job time:  0:01:19
+Job:  parsec-canneal
+Job time:  0:04:11
+Job:  parsec-dedup
+Job time:  0:00:43
+Job:  parsec-ferret
+Job time:  0:02:53
+Job:  parsec-freqmine
+Job time:  0:02:16
+Job:  parsec-radix
+Job time:  0:00:19
+Job:  parsec-vips
+Job time:  0:01:53
+Job:  memcached
+Total time: 0:04:12
+
+RUN 2
+
+Job:  parsec-blackscholes
+Job time:  0:01:19
+Job:  parsec-canneal
+Job time:  0:03:42
+Job:  parsec-dedup
+Job time:  0:00:45
+Job:  parsec-ferret
+Job time:  0:02:51
+Job:  parsec-freqmine
+Job time:  0:02:17
+Job:  parsec-radix
+Job time:  0:00:19
+Job:  parsec-vips
+Job time:  0:01:52
+Job:  memcached
+Total time: 0:03:45
+
+RUN 3
+
+Job:  parsec-blackscholes
+Job time:  0:01:19
+Job:  parsec-canneal
+Job time:  0:03:42
+Job:  parsec-dedup
+Job time:  0:00:43
+Job:  parsec-ferret
+Job time:  0:02:54
+Job:  parsec-freqmine
+Job time:  0:02:18
+Job:  parsec-radix
+Job time:  0:00:19
+Job:  parsec-vips
+Job time:  0:01:53
+Job:  memcached
+Total time: 0:03:43

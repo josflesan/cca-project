@@ -9,7 +9,7 @@ parser.add_argument("--benchmark", type=str, choices=['cpu', 'l1i', 'l1d', 'l2',
 
 args = parser.parse_args()
 
-# Define colour palette (6 line plots + error bars)
+# Define colour palette (7 line plots)
 colours = sns.color_palette("husl", 7)
 
 def convert_units(data):
@@ -82,6 +82,7 @@ def plot_single_benchmark(df):
     plt.savefig(f"plots/{args.benchmark}.png", format="png", dpi=300)
 
 def plot_all_benchmarks():
+    baseline_df = process_benchmark("bl")
     cpu_df = process_benchmark("cpu")
     l1i_df = process_benchmark("l1i")
     l1d_df = process_benchmark("l1d")
@@ -90,6 +91,7 @@ def plot_all_benchmarks():
     mem_df = process_benchmark("mem")
 
     # Convert units
+    convert_units(baseline_df)
     convert_units(cpu_df)
     convert_units(l1i_df)
     convert_units(l1d_df)
@@ -97,8 +99,8 @@ def plot_all_benchmarks():
     convert_units(llc_df)
     convert_units(mem_df)
 
-    interference_groups = [cpu_df, l1i_df, l1d_df, l2_df, llc_df, mem_df]
-    interference_labels = ["ibench-cpu", "ibench-l1i", "ibench-l1d", "ibench-l2", "ibench-llc", "ibench-membw"]
+    interference_groups = [baseline_df, cpu_df, l1i_df, l1d_df, l2_df, llc_df, mem_df]
+    interference_labels = ["baseline", "ibench-cpu", "ibench-l1i", "ibench-l1d", "ibench-l2", "ibench-llc", "ibench-membw"]
 
     # Set up plot style
     plt.figure(figsize=(10, 6), dpi=150)

@@ -11,7 +11,7 @@ The nodes we have in the cluster:
 
 #### Ordering
 
-Ordering (Shortes Job First):
+Ordering (Shortest Job First):
 
 dedup, radix, vips, blackscholes, canneal, ferret, freqmine
 
@@ -25,13 +25,13 @@ Processes in A:
 
 1) *canneal*: performs simulated annealing to optimize routing cost in chip design. Parallel workload that seems to not benefit as much from parallelism. Instead it is most affected by memory bandwidth so we probably want to use a highmem instance (A). T = 4
 
-Processes in B:
-
 1) *dedup*: data compression algorithm. Does not benefit much from parallelism but is affected by CPU and memory (B). Run it once and then leave this node available
+
+Processes in B:
 
 1) *blackscholes*: using Black-scholes model to compute options. Data-parallel/Embarrassingly parallel workload, should benefit from parallelism in multicore system, probably does not need as much memory (C/B?)
 
-2) *vips*: image processing, pipeline parallel, memory hungry. Benefits moderately from parallelism (B). T = 4, anything else is not helping
+2) *vips*: image processing, pipeline parallel, memory hungry. Benefits moderately from parallelism (B). T = 2, anything else is not helping
 
 Processes in C:
 
@@ -41,7 +41,7 @@ Processes in D:
 
 1) *radix*: Heavily benefits from parallelism. Can be collocated with other parallel and data-hungry processes (D). Maybe pin this to a separate core?
 
-1) *ferret*: content-based similarity search for multimedia files. Pipeline parallelism so a lot of data exchange between stages. Benefits a lot from parallelism and needs high memory VM so maybe standard (D). T = 4/8
+2) *ferret*: content-based similarity search for multimedia files. Pipeline parallelism so a lot of data exchange between stages. Benefits a lot from parallelism and needs high memory VM so maybe standard (D). T = 4/8
 
 ---
 

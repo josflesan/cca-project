@@ -11,7 +11,7 @@ from get_time import get_time
 @dataclasses.dataclass
 class Job:
     name: str
-    priority: str
+    priority: int
     node: str
     isolated: bool = False
     thread_num: int = 1
@@ -27,9 +27,9 @@ jobs = [
     Job(
         name="dedup",
         priority=1,
-        isolated=True,
+        isolated=False,
         thread_num=2,
-        node="node-b-2core",
+        node="node-a-2core",
         # coresLim=1,
         # memoryLim=8,
     ),
@@ -37,14 +37,14 @@ jobs = [
         name="blackscholes",
         priority=1,
         isolated=True,
-        thread_num=1,
+        thread_num=2,
         node="node-b-2core",
         # coresLim=1,
         # memoryLim=1,
     ),
     Job(
         name="ferret",
-        priority=1,
+        priority=2,
         isolated=True,
         thread_num=4,
         node="node-d-4core",
@@ -54,13 +54,13 @@ jobs = [
     Job(
         name="freqmine",
         priority=1,
-        isolated=False,
+        isolated=True,
         thread_num=4,
         node="node-c-4core",
-        coresReq=4,
-        memoryReq=8,
-        coresLim=4,
-        memoryLim=8,
+        # coresReq=4,
+        # memoryReq=8,
+        # coresLim=4,
+        # memoryLim=8,
     ),
     Job(
         name="radix",
@@ -82,22 +82,20 @@ jobs = [
     ),
     Job(
         name="canneal",
-        priority=1,
+        priority=2,
         isolated=False,
-        thread_num=4,
+        thread_num=2,
         node="node-a-2core",
-        coresReq=2,
-        memoryReq=8,
-        coresLim=2,
-        memoryLim=8,
+        # coresReq=2,
+        # memoryReq=8,
+        # coresLim=2,
+        # memoryLim=8,
     ),
 ]
 
-# jobs = jobs[0:1]  #TODO: deleteme
-
 def wait_for_job_completion(job_name: str, timeout_seconds: int = 3600):
     """Wait for the Kubernetes job to complete."""
-    wait_cmd = f"kubectl wait --for=condition=complete job/{job_name} --timeout={timeout_seconds}s"
+    wait_cmd = f"kubectl wait --for=condition=complete job/parsec-{job_name} --timeout={timeout_seconds}s"
     result = subprocess.run(wait_cmd, shell=True, text=False)
     return result.returncode == 0
 
@@ -106,12 +104,16 @@ def schedule_jobs(jobs: List[Job]):
     jobs = sorted(jobs, key=lambda j: j.priority)
     for job in jobs:
         start_job_cmd = f"kubectl create -f {job.path_name}"
+        print(f"starting {job.name}...")
         _ = subprocess.run(start_job_cmd, text=False, shell=True)
         if job.isolated:
+            print(f"waiting for {job.name}...")
             wait_for_job_completion(job.name)
+            print(f"done waiting for {job.name}...")
     # not sure about this
     for job in jobs:
-        wait_for_job_completion(job.name)
+        if not job.isolated:
+            wait_for_job_completion(job.name)
 
 
 def update_yaml(job):
@@ -133,7 +135,8 @@ def update_yaml(job):
         spec["nodeSelector"]["cca-project-nodetype"] = job.node
 
         # change thread count
-        run_cmd = f"./run -a run -S parsec -p {job.name} -i native -n {job.thread_num}"
+        library = "parsec" if job.name != "radix" else "splash2x"
+        run_cmd = f"./run -a run -S {library} -p {job.name} -i native -n {job.thread_num}"
         spec["containers"][0]["args"][1] = run_cmd
 
     # write back
@@ -146,11 +149,9 @@ def main(run: int):
     for job in jobs:
         update_yaml(job)
         nodes_to_jobs[job.node].append(job)
-
+    
     with ProcessPoolExecutor(4) as exec:
         exec.map(schedule_jobs, nodes_to_jobs.values())
-
-    print(f"FINISHED EXECUTING")
 
     # Run commands to get final time:
     # $ kubectl get pods -o json > results.json

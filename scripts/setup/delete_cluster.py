@@ -17,3 +17,9 @@ if __name__ == "__main__":
 
     # Delete the cluster
     subprocess.run(f"kops delete cluster --name part{args.part}.k8s.local --yes", shell=True, text=True)
+
+    # Delete cluster information
+    cluster_info_filepath = "scripts/setup/cluster.txt"
+    if os.path.exists(cluster_info_filepath):
+        os.remove(cluster_info_filepath)
+        print("DELETED CLUSTER INFORMATION")

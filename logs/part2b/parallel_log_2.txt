@@ -1,0 +1,7 @@
+parsec-dedup: 7.541
+parsec-vips: 33.66
+parsec-ferret: 115.238
+parsec-radix: 20.563
+parsec-blackscholes: 48.563
+parsec-canneal: 106.631
+parsec-freqmine: 179.385

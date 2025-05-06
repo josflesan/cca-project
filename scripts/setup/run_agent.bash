@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TARG=4
+TARG=8
 
 cd ~
 cd memcache-perf-dynamic

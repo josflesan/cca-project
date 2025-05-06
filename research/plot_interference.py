@@ -128,7 +128,7 @@ def plot_all_benchmarks():
                     capthick=1.5)
     
     # Configure titles and axes
-    plt.title(f"QPS vs P95 Latency for Different Interference Types", loc='left', fontweight='bold', fontsize=12, family="Arial", pad=22)
+    plt.title("QPS vs P95 Latency for Different Interference Types", loc='left', fontweight='bold', fontsize=12, family="Arial", pad=22)
     plt.ylabel("P95 Latency [ms]", loc='top', rotation=0, fontsize=10, family="Arial")
     
     plt.gca().yaxis.set_label_coords(0.115, 1.02)
@@ -142,7 +142,7 @@ def plot_all_benchmarks():
 
     # Output
     plt.tight_layout()
-    plt.savefig(f"plots/all.png", format="png", dpi=300)
+    plt.savefig("plots/all.png", format="png", dpi=300)
 
 if __name__ == '__main__':
 

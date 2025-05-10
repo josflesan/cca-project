@@ -6,7 +6,7 @@ import yaml
 import argparse
 from typing import List
 
-from get_time import get_time
+from utils.part3_utils import get_time
 
 @dataclasses.dataclass
 class Job:

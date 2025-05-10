@@ -23,7 +23,11 @@ def convert_to_csv(input_file, output_file):
             line = line[1:].strip()
         else:
             line = line.strip()
-            
+        
+        # Skip lines indicating Timestamps
+        if line.startswith("Timestamp"):
+            continue
+
         # Skip empty lines
         if not line:
             continue

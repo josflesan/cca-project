@@ -2,7 +2,6 @@ from datetime import datetime
 from enum import Enum
 import urllib.parse
 
-
 LOG_STRING = "{timestamp} {event} {job_name} {args}"
 
 class Job(Enum):
@@ -18,10 +17,10 @@ class Job(Enum):
 
 
 class SchedulerLogger:
-    def __init__(self):
+    def __init__(self, question: int):
         start_date = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        self.file = open(f"log{start_date}.txt", "w")
+        self.file = open(f"logs/part4/Q{question}/log{start_date}.txt", "w")
         self._log("start", Job.SCHEDULER)
 
     def _log(self, event: str, job_name: Job, args: str = "") -> None:

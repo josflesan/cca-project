@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CORE_START=0
-CORE_END=1
+CORE_END=0
 
 sudo systemctl restart memcached
 echo "Waiting for service to restart..."

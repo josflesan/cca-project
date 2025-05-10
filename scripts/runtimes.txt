@@ -1,0 +1,105 @@
+PLAN:
+
+dedup: should run on 1 thread, little improvements when increasing amount of threads
+ferret: should run on 3 threads 3 cores
+canneal: can run 2 threads 2 cores, very little improvement when going from 2 to 3
+radix: can be 1 or 2
+freqmine: 3 or 2, 30 sec improvement from 3 threads to 2 threads, let it scale like vips
+blackscholes: 1 or 2 threads
+vips: 3 threads 2 cores, and let it scale if posssible
+
+OUTPUT:
+
+Running radix with 1 threads and 1 cores
+radix took 0.6858684500999971 minutes with 1 cores and 1 threads
+Killing Container: radix
+Running radix with 2 threads and 2 cores
+radix took 0.35250362540000424 minutes with 2 cores and 2 threads
+Killing Container: radix
+Running freqmine with 1 threads and 1 cores
+freqmine took 5.841732762016666 minutes with 1 cores and 1 threads
+Killing Container: freqmine
+Running freqmine with 3 threads and 3 cores
+freqmine took 2.6364575652333313 minutes with 3 cores and 3 threads
+Killing Container: freqmine
+Running freqmine with 2 threads and 2 cores
+freqmine took 2.923333828483328 minutes with 2 cores and 2 threads
+Killing Container: freqmine
+Running freqmine with 3 threads and 2 cores
+freqmine took 2.949128769033329 minutes with 2 cores and 3 threads
+Killing Container: freqmine
+Running canneal with 1 threads and 1 cores
+canneal took 3.0933154085999983 minutes with 1 cores and 1 threads
+Killing Container: canneal
+Running canneal with 3 threads and 3 cores
+canneal took 1.698770666916668 minutes with 3 cores and 3 threads
+Killing Container: canneal
+Running canneal with 2 threads and 2 cores
+canneal took 1.8309419873333355 minutes with 2 cores and 2 threads
+Killing Container: canneal
+Running canneal with 3 threads and 2 cores
+canneal took 1.9445437311999891 minutes with 2 cores and 3 threads
+Killing Container: canneal
+Running ferret with 1 threads and 1 cores
+ferret took 4.129048336933328 minutes with 1 cores and 1 threads
+Killing Container: ferret
+Running ferret with 3 threads and 3 cores
+ferret took 2.1397190005500004 minutes with 3 cores and 3 threads
+Killing Container: ferret
+Running ferret with 2 threads and 2 cores
+ferret took 2.49182318443333 minutes with 2 cores and 2 threads
+Killing Container: ferret
+Running ferret with 3 threads and 2 cores
+ferret took 2.5003139049333187 minutes with 2 cores and 3 threads
+Killing Container: ferret
+Running dedup with 1 threads and 1 cores
+dedup took 0.3857313479833465 minutes with 1 cores and 1 threads
+Killing Container: dedup
+Running dedup with 3 threads and 3 cores
+dedup took 0.3547560463500001 minutes with 3 cores and 3 threads
+Killing Container: dedup
+Running dedup with 2 threads and 2 cores
+dedup took 0.37565219655001175 minutes with 2 cores and 2 threads
+Killing Container: dedup
+Running dedup with 3 threads and 2 cores
+dedup took 0.3794641574833198 minutes with 2 cores and 3 threads
+Killing Container: dedup
+Running blackscholes with 1 threads and 1 cores
+blackscholes took 1.4914518000166632 minutes with 1 cores and 1 threads
+Killing Container: blackscholes
+Running blackscholes with 3 threads and 3 cores
+blackscholes took 0.7468888762666513 minutes with 3 cores and 3 threads
+Killing Container: blackscholes
+Running blackscholes with 2 threads and 2 cores
+blackscholes took 0.8556358376333264 minutes with 2 cores and 2 threads
+Killing Container: blackscholes
+Running blackscholes with 3 threads and 2 cores
+blackscholes took 0.8575951966166637 minutes with 2 cores and 3 threads
+Killing Container: blackscholes
+Running vips with 1 threads and 1 cores
+vips took 1.1508218575000078 minutes with 1 cores and 1 threads
+Killing Container: vips
+Running vips with 3 threads and 3 cores
+vips took 0.6227884596333448 minutes with 3 cores and 3 threads
+Killing Container: vips
+Running vips with 2 threads and 2 cores
+vips took 0.6323807625499891 minutes with 2 cores and 2 threads
+Killing Container: vips
+Running vips with 3 threads and 2 cores
+vips took 0.6575200271333415 minutes with 2 cores and 3 threads
+Killing Container: vips
+
+
+POSSIBLE SCHEDULE:
+
+ferret (3,3T) -> 2.13 mins
+freqmine(3,3T) -> 2.6 mins
+canneal (2,2T) + dedup(1) -> 1.83 mins (0.38 mins for dedup)
+radix (1,4T) -> hopefully absorbed into above (0.28 mins)
+blackscholes (1,3T) -> 0.74 mins (part of it absorbed into canneal)
+vips (2,3T -> 3,3T) -> 0.657 mins
+
+BASELINE: based on running the baselines in series
+
+radix, freqmine, canneal, ferret, dedup, blackscholes, vips
+0.35 + 2.63 + 1.69 + 2.13 + 0.35 + 0.85 + 0.622 = 8.622 mins (optimal threads/cores, series)

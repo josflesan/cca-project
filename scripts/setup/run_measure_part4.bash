@@ -1,7 +1,7 @@
 #!/bin/bash
 
-MEMCACHED_IP=10.0.16.6
-INTERNAL_AGENT_IP=10.0.16.4
+MEMCACHED_IP=10.0.16.4
+INTERNAL_AGENT_IP=10.0.16.3
 
 cd ~
 cd memcache-perf-dynamic

@@ -4,12 +4,13 @@ import subprocess
 
 from launch_cluster_part4 import update_bash_script, get_internal_ip, get_instance_name
 
-def update_config(config: str, internal_ip: str, threads: int =1, ) -> str:
+def update_config(config: str, internal_ip: str | None, threads: int=1) -> str:
     # Replace memory limit (-m) with 1024
     config = re.sub(r"^-m\s+\d+", "-m 1024", config, flags=re.MULTILINE)
 
     # Replace listen address (-l) with internal IP
-    config = re.sub(r"^-l\s+\S+", f"-l {internal_ip}", config, flags=re.MULTILINE)
+    if internal_ip:
+        config = re.sub(r"^-l\s+\S+", f"-l {internal_ip}", config, flags=re.MULTILINE)
 
     # Set number of threads (-t); add if not present
     if re.search(r"^-t\s+\d+", config, flags=re.MULTILINE):

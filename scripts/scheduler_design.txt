@@ -1,0 +1,98 @@
+
+Strategy Pattern?
+
+- Longest Job First
+- Shortest Job First
+- Priority Based scheduling
+
+Controller takes in a scheduling policy
+
+
+enum Load:
+    UBER_LOW
+    LOW
+    HIGH
+
+@dataclass
+class Benchmark:
+    priority: int | None  # Optional priority argument (order defined implicitly through this)
+
+@dataclass
+class JobManager
+    completed: List[Job]
+    running: List[Job]
+    paused: List[Job]
+    pending: List[Job] -> Priority Queue?
+
+
+@dataclass
+class State:
+    load: List[float] = [0.23, 0.12]
+    job_queues: JobManager
+    cores_available: List[int] (maybe a bitmask?)
+
+Strategy Interface():
+    __init__(ordering: Dict[str, int], colocations: Dict[str, List[str]] | None, logger: SchedulerLogger):
+        ...
+    on_state_update(state: State) :
+        # If load goes to low and next pending job is able to start, start it
+        # Possibly pause or scale down another process
+    on_job_complete(state: State):...
+    _get_next_job(JobManager)
+
+
+Controller(Strategy):
+    - Strategy decides which new jobs to start/pause/update
+    - Contains methods to start, update, pause, etc. containers
+    - Decision on how to load balance done by Strategy
+    - Decision on how to update memcached
+    
+    0: __init__(cpu_thresholds: List[int])
+    1: is_high_low() -> determines if the CPU utilization is high or low
+    2: run_loop()
+    3: update_memcached()
+    4: _clean_up_containers() -> call on_job_complete
+    5: _relinquish_cores()
+    6: _get_available_cores()
+    7: _get_num_cores_available()
+
+
+Command idea:
+
+class ShittyStrategy(SchedulingStrategy):
+    # this would be defined in the abstract class
+    def __init__(self, ordering, colocations, logger):
+        command_buffer = []
+
+    def on_state_update(self, state: State):
+        super().on_state_update(state)
+
+    // those are abstract
+    def pause(benchmark):
+        command_buffer.append(Pause(benchmark))
+
+    def unpause(benchmark):
+        command_buffer.append(UnPause(benchmark))
+
+    def run(benchmarkl, cores):
+        command_buffer.append(Run(benchmark))
+
+    controller then proceeds to call flush_buffer(strategy.command_buffer):
+        which handles all these commands
+
+
+
+def flush_buffer(command_buffer):
+    for command in command_buffer
+        match(command):
+            case Run(benchmark, cores):
+                hande_run(benchmark, cores)
+            case Pause(benchmark, cores):
+                hande_pause(benchmark)
+            case UnPause(benchmark):
+                hande_pause(benchmark)
+
+-------------------------------------------------------------------------------------
+ do we need to relinquish cores? |
+-------------------------------------------------------------------------------------
+- isnt it just shitty strat that cares about available cores, if so shouldnt it do the bookkeeping itself, idk honestly

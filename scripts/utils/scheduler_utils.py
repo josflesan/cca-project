@@ -34,16 +34,10 @@ class Benchmark:
     
 @dataclass
 class JobManager:
-    queue_types: List[type]
     completed: int = 0
     running: List[Benchmark] = field(default_factory=list)
     paused: List[Benchmark] = field(default_factory=list)
     pending: List[Benchmark] = field(default_factory=list)
-
-    def __post_init__(self):
-        self.running = field(default_factory=self.queue_types[0])
-        self.paused = field(default_factory=self.queue_types[1])
-        self.pending = field(default_factory=self.queue_types[2])
 
     ############# METHODS #############
     def check_completed_jobs(self):
@@ -62,28 +56,16 @@ class JobManager:
 
     ############# GETTERS #############
     def get_running_by_core(self, cores: int) -> List[Benchmark]:
-        relevant_bench = []
-        for bench in self.running:
-            if bench.cores_num == cores:
-                relevant_bench.append(bench)
-
-        return relevant_bench
+        result = [benchmark for benchmark in self.running if benchmark.cores_num == cores]
+        return result
     
     def get_paused_by_core(self, cores: int) -> List[Benchmark]:
-        relevant_bench = []
-        for bench in self.paused:
-            if bench.cores_num == cores:
-                relevant_bench.append(bench)
-        
-        return relevant_bench
+        result = [benchmark for benchmark in self.paused if benchmark.cores_num == cores]
+        return result
 
     def get_pending_by_core(self, cores: int) -> List[Benchmark]:
-        relevant_bench = []
-        for bench in self.pending:
-            if bench.cores_num == cores:
-                relevant_bench.append(bench)
-        
-        return relevant_bench
+        result = [benchmark for benchmark in self.pending if benchmark.cores_num == cores]
+        return result
 
     def get_num_completed(self) -> int:
         return self.completed
@@ -96,6 +78,8 @@ class JobManager:
     
     def get_num_pending(self) -> int:
         return len(self.pending)
+    def get_non_running(self) -> list:
+        return  self.paused + self.pending
 
 @dataclass(slots=True)
 class State:
@@ -104,12 +88,6 @@ class State:
     job_queues: JobManager
     cores_available: List[int]
 
-    def get_cores_available(self) -> List[int]:
-        return self.cores_available
-    
-    def get_num_cores_available(self) -> int:
-        return len(self.cores_available)
-    
 @dataclass
 class MemcachedThresholds:
     min_threshold: float = 80.0
@@ -117,41 +95,23 @@ class MemcachedThresholds:
 
 
 ################# COMMANDS #################
+class Command:
+    pass
 
-@dataclass
-class Run:
-   type: str
-   bench: Benchmark
+@dataclass(frozen=True,slots=True)
+class Run(Command):
+   benchmark: Benchmark
    cores: List[int]
 
-   def __post_init__(self):
-       self.type = self.bench.name
-
-@dataclass
-class Update:
-   type: str
-   bench: Benchmark
+@dataclass(frozen=True,slots=True)
+class Update(Command):
+   benchmark: Benchmark
    cores: List[int]
 
-   def __post_init__(self):
-       self.type = self.bench.name
+@dataclass(frozen=True,slots=True)
+class Pause(Command):
+   benchmark: Benchmark
 
-@dataclass
-class Pause:
-   type: str
-   bench: Benchmark
-
-   def __post_init__(self):
-       self.type = self.bench.name
-
-@dataclass
-class Unpause:
-   type: str
-   bench: Benchmark
-
-   def __post_init__(self):
-       self.type = self.bench.name
-
-
-
-
+@dataclass(frozen=True,slots=True)
+class Unpause(Command):
+   benchmark: Benchmark

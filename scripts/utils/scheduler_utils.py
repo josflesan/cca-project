@@ -49,6 +49,10 @@ class Benchmark:
     def attach_container(self, container: Container) -> None:
         self.container = container
 
+    def get_cores(self) -> List[int]:
+        core_start, core_end = self.container.attrs['HostConfig']['CpusetCpus'].split("-")
+        return list(range(int(core_start), int(core_end) + 1))
+
     def is_paused(self):
         # Maybe we have to reload, dont think so tho
         return self.container and self.container.status == "paused"

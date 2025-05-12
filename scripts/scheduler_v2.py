@@ -28,10 +28,16 @@ import atexit
 def signal_handler(*args, **kwargs):
     """Handle CTRL+C and other termination signals"""
     print("\nExiting gracefully...")
+
+    # Reset memcached to run on a single core
     mc_pid = (
         subprocess.run("sudo pidof memcached", shell=True, capture_output=True)
         .stdout.decode()
         .strip()
+        )
+    subprocess.run(
+            f"sudo taskset -a -cp 0-0 {mc_pid}",
+            shell=True,
         )
 
     client = docker.from_env()
@@ -183,7 +189,6 @@ class Controller:
     def relinquish_cores(self, container: Container) -> None:
         core_start, core_end = container.attrs["HostConfig"]["CpusetCpus"].split("-")
         for core in range(int(core_start), int(core_end) + 1):
-            print(f"Relinquishing core {core}...")
             self.cores_used[core] = False
 
     def launch_memcached(self, threads: int, core_start: str, core_end: str):

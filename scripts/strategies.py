@@ -1,19 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List
-from collections import deque, defaultdict
-from typing import Deque
-from docker.models.containers import Container
 
-from utils.scheduler_logger import SchedulerLogger
+from utils.scheduler_logger import SchedulerLogger, Job
 from utils.scheduler_utils import (
     JobManager,
     State,
     Benchmark,
     Load,
-    Pause,
-    Unpause,
-    Run,
-    Update,
 )
 
 
@@ -28,29 +21,34 @@ class SchedulingStrategy(ABC):
         self.ordering = ordering
         self.colocations = colocations
         self.logger = logger
-        self.command_buffer = (
-            []
-        )  # Source of truth for commands ran on every state update
-
+        
     @abstractmethod
-    def on_state_update(self, state: State) -> None:
+    def on_state_update(self, state: State, job_manager: JobManager) -> None:
         pass
 
     @abstractmethod
-    def on_job_complete(self, completed_jobs: List[Benchmark], state: State) -> None:
+    def on_job_complete(self, completed_jobs: List[Benchmark], state: State, job_manager: JobManager) -> None:
         pass
 
-    def pause(self, benchmark: Benchmark) -> None:
-        self.command_buffer.append(Pause(benchmark))
+    def pause(self, benchmark: Benchmark, state: State, job_manager: JobManager) -> None:      
+        did_pause = job_manager.pause(benchmark, state)
 
-    def unpause(self, benchmark: Benchmark) -> None:
-        self.command_buffer.append(Unpause(benchmark))
+        if did_pause:
+            self.logger.job_pause(Job._member_map_[benchmark.name.upper()])
 
-    def run(self, benchmark: Benchmark, cores: List[int]) -> None:
-        self.command_buffer.append(Run(benchmark, cores))
+    def unpause(self, benchmark: Benchmark, state: State, job_manager: JobManager) -> None:
+        did_unpause = job_manager.unpause(benchmark, state)
 
-    def update(self, benchmark: Benchmark, cores: List[int]) -> None:
-        self.command_buffer.append(Update(benchmark, cores))
+        if did_unpause:
+            self.logger.job_unpause(Job._member_map_[benchmark.name.upper()])
+
+    def run(self, benchmark: Benchmark, cores: List[int], state: State, job_manager: JobManager) -> None:
+        job_manager.run(benchmark, cores, state)
+        self.logger.job_start(benchmark.to_job(), initial_cores=cores, initial_threads=benchmark.thread_num)
+        
+    def update(self, benchmark: Benchmark, cores: List[int], state: State, job_manager: JobManager) -> None:
+        job_manager.update(benchmark, cores, state)
+        self.logger.update_cores(Job._member_map_[benchmark.name.upper()], cores=cores)
 
 
 # SCHEDULING STRATEGIES
@@ -66,7 +64,7 @@ class ShittyStrategy(SchedulingStrategy):
     def __init__(self, ordering=None, colocations=None, logger=None):
         super().__init__(ordering, colocations, logger)
 
-    def _schedule_optimal_job(self, state: State, cores_available) -> Benchmark | None:
+    def _schedule_optimal_job(self, state: State, job_manager: JobManager, cores_available: int) -> Benchmark | None:
         """
         Schedule the Optimal Job according to Cores Available:
 
@@ -83,7 +81,6 @@ class ShittyStrategy(SchedulingStrategy):
         - If we have 1 core available
             If only 2 core jobs remain in paused/pending, do those
         """
-        job_manager = state.job_manager
         core1_remaining = (job_manager.get_paused_by_core(1) + job_manager.get_pending_by_core(1))
         core2_remaining = (job_manager.get_paused_by_core(2) + job_manager.get_pending_by_core(2))
         core3_remaining = (job_manager.get_paused_by_core(3) + job_manager.get_pending_by_core(3))
@@ -118,8 +115,7 @@ class ShittyStrategy(SchedulingStrategy):
             
         return None
 
-    def on_state_update(self, state: State) -> None:
-        job_manager = state.job_manager
+    def on_state_update(self, state: State, job_manager: JobManager) -> None:
 
         # if running 3 core job, then pause it and run 2 core job
         # if running 3 core job, and only 1, reduce 3 core job to 2 cores
@@ -130,22 +126,22 @@ class ShittyStrategy(SchedulingStrategy):
             paused_2_cores = job_manager.get_paused_by_core(2)
             pending_2_cores = job_manager.get_pending_by_core(2)
             if running_3_cores and (paused_2_cores or pending_2_cores):
-                self.pause(running_3_cores[0])
+                self.pause(running_3_cores[0], state, job_manager)
                 if paused_2_cores:
-                    self.unpause(paused_2_cores[0])
+                    self.unpause(paused_2_cores[0], state, job_manager)
                 else:
-                    self.run(pending_2_cores[0], cores=state.cores_available)
+                    self.run(pending_2_cores[0], state.cores_available, state, job_manager)
                 return
             elif running_3_cores:
-                self.update(running_3_cores[0], cores=state.cores_available)
+                self.update(running_3_cores[0], state.cores_available, state, job_manager)
                 return
 
             running_1_cores = job_manager.get_pending_by_core(1)
             running_2_cores = job_manager.get_pending_by_core(2)
             if running_2_cores and running_1_cores:
-                self.pause(running_1_cores[0])
+                self.pause(running_1_cores[0], state, job_manager)
             elif len(running_1_cores) == 3:  # unlikely
-                self.pause(running_1_cores[0])
+                self.pause(running_1_cores[0], state, job_manager)
 
         # if we are on a 3 core job, scale up to 3 cores
         # if there is a 3 core job, switch to it
@@ -158,37 +154,37 @@ class ShittyStrategy(SchedulingStrategy):
                 self.update(benchmarks[0], state.cores_available)
             elif benchmarks := job_manager.get_paused_by_core(3):
                 for bc in job_manager.running:
-                    self.pause(bc)
+                    self.pause(bc, state, job_manager)
                 # ! The core it runs on should be the responsibility of the strategy not the controller
-                self.unpause(benchmarks[0])
+                self.unpause(benchmarks[0], state, job_manager)
             elif job_manager.get_running_by_core(2):
                 if benchmarks := job_manager.get_paused_by_core(1):
-                    self.unpause(benchmarks[0])
+                    self.unpause(benchmarks[0], state, job_manager)
                 elif benchmarks := job_manager.get_pending_by_core(1):
-                    self.run(benchmarks[0], cores=state.cores_available[0])
+                    self.run(benchmarks[0], [state.cores_available[0]], state, job_manager)
                 elif benchmarks := job_manager.get_paused_by_core(2):
-                    self.update(benchmarks[0], state.cores_available)
-                    self.unpause(benchmarks[0])
+                    self.update(benchmarks[0], state.cores_available, state, job_manager)
+                    self.unpause(benchmarks[0], state, job_manager)
                 elif benchmarks := job_manager.get_pending_by_core(2):
-                    self.run(benchmarks[0], state.cores_available)
+                    self.run(benchmarks[0], state.cores_available, state, job_manager)
             elif job_manager.get_running_by_core(1):
                 if benchmarks := job_manager.get_paused_by_core(1):
-                    self.unpause(benchmarks[0])
+                    self.unpause(benchmarks[0], state, job_manager)
                 elif benchmarks := job_manager.get_pending_by_core(1):
-                    self.run(benchmarks[0], state.cores_available[-1])
+                    self.run(benchmarks[0], [state.cores_available[-1]], state, job_manager)
             else:
                 raise RuntimeError("Should be unreachable")
     
-    def on_job_complete(self, copleted_jobs, state: State):        
+    def on_job_complete(self, completed_jobs: List[Benchmark], state: State, job_manager: JobManager):        
         # can use inefficient operations here since this is only called 6 times
         num_cores_available = len(state.cores_available)
         
-        while bench := self._schedule_optimal_job(state, num_cores_available):
+        while bench := self._schedule_optimal_job(state, job_manager, num_cores_available):
             # Run or unpause the benchmark
             if bench.is_paused():
-                self.unpause(bench)
+                self.unpause(bench, state, job_manager)
             else:
-                self.run(bench, cores=state.cores_available[-bench.cores_num:])
+                self.run(bench, cores=state.cores_available[-bench.cores_num:], state=state, job_manager=job_manager)
             
             # Update remaining cores
             num_cores_available -= bench.cores_num
@@ -210,8 +206,7 @@ class NoPauseStrategy(SchedulingStrategy):
         if running colocated 2 core jobs, make them overlap only in 1 core
     """
 
-    def on_state_update(self, state: State) -> None:
-        job_manager = state.job_manager
+    def on_state_update(self, state: State, job_manager: JobManager) -> None:
         if state.load == Load.HIGH:
             running_3c = job_manager.get_running_by_core(3)
             if running_3c:
@@ -255,8 +250,7 @@ class NoPauseStrategy(SchedulingStrategy):
 
             pass
 
-    def on_job_complete(self, completed_jobs, state: State) -> None:
-        job_manager = state.job_manager
+    def on_job_complete(self, completed_jobs, state: State, job_manager: JobManager) -> None:
         if state.cores_available:
             next_benchmark = job_manager.get_highest_pending()
             cores_to_occupy = min(len(state.cores_available), next_benchmark.cores_num)
@@ -266,29 +260,32 @@ class NoPauseStrategy(SchedulingStrategy):
 
 class ShortestJobFirst(SchedulingStrategy):
     """No interference information, just runs jobs sequentially from shortest to longest"""
+    pass
 
-    def on_state_update(self, state):
-        return super().on_state_update(state)
+    # def on_state_update(self, state):
+    #     return super().on_state_update(state)
 
-    def on_job_complete(self, state):
-        return super().on_job_complete(state)
+    # def on_job_complete(self, state):
+    #     return super().on_job_complete(state)
 
 
 class InterferenceAwarePause(SchedulingStrategy):
     """Uses interference information and pauses running containers"""
+    pass
 
-    def on_state_update(self, state):
-        return super().on_state_update(state)
+    # def on_state_update(self, state):
+    #     return super().on_state_update(state)
 
-    def on_job_complete(self, state):
-        return super().on_job_complete(state)
+    # def on_job_complete(self, state):
+    #     return super().on_job_complete(state)
 
 
 class InterferenceAwareScaling(SchedulingStrategy):
     """Uses interference information but does not pause containers, instead scaling core requirements"""
+    pass
 
-    def on_state_update(self, state):
-        return super().on_state_update(state)
+    # def on_state_update(self, state):
+    #     return super().on_state_update(state)
 
-    def on_job_complete(self, state):
-        return super().on_job_complete(state)
+    # def on_job_complete(self, state):
+    #     return super().on_job_complete(state)

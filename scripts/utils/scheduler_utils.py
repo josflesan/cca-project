@@ -1,10 +1,12 @@
 import re
 from dataclasses import dataclass, field
-from typing import List, Collection
+from typing import List, Dict, Set
 from docker.models.containers import Container
 from .scheduler_logger import Job
 import enum
 from enum import Enum
+from collections import defaultdict
+import docker
 
 
 def update_config(config: str, internal_ip: str | None = None, threads: int = 1) -> str:
@@ -63,9 +65,63 @@ class Benchmark:
     def __repr__(self):
         return f"(name={self.name}, p={self.priority})"
 
+@dataclass(slots=True)
+class State:
+    load_cores: List[float] = field(default_factory=list)
+    load: Load = Load.LOW
+    mc_utilization: float = 0.0
+    cores_available: List[int] = field(default_factory=list)
+    cores_used: Dict[int, Set[str]] = field(default_factory=lambda: defaultdict(set))
+
+    def __post_init__(self):
+        self.cores_used["0"].add("memcache")
+
+    def update_state(self, **kwargs):
+        self.load_cores = kwargs.get("load_cores", self.load)
+        self.load = kwargs.get("load", self.load)
+        self.mc_utilization = kwargs.get("mc_utilization", self.mc_utilization)
+
+    def acquire_cores(self, container: Container):
+        core_start, core_end = container.attrs["HostConfig"]["CpusetCpus"].split("-")
+        for core in range(int(core_start), int(core_end) + 1):
+            self.cores_used[core].add(container.name)
+        
+        # Update cores available
+        self.cores_available = sorted([core for core, used in self.cores_used.items() if not used])
+
+    def acquire_cores_manual(self, cores: List[int], job: str):
+        for core in cores:
+            self.cores_used[core].add(job)
+        
+        # Update cores available
+        self.cores_available = sorted([core for core, used in self.cores_used.items() if not used])
+
+    def relinquish_cores(self, container: Container):
+        core_start, core_end = container.attrs["HostConfig"]["CpusetCpus"].split("-")
+        for core in range(int(core_start), int(core_end) + 1):
+            self.cores_used[core].remove(container.name)
+        
+        # Update cores available
+        self.cores_available = sorted([core for core, used in self.cores_used.items() if not used])
+
+    def relinquish_cores_manual(self, cores: List[int], job: str):
+        for core in cores:
+            self.cores_used[core].remove(job)
+
+        # Update cores available
+        self.cores_available = sorted([core for core, used in self.cores_used.items() if not used])
+
+    def __str__(self):
+        ret_str = "--------------- STATE ---------------\n"
+        ret_str += f"MC Util:\t {self.mc_utilization}\n"
+        ret_str += f"LOAD:\t {self.load}\n"
+        ret_str += f"CORES AVAILABLE:\t {self.cores_available}\n"
+
+        return ret_str
 
 @dataclass
 class JobManager:
+    client: docker.DockerClient = field(default_factory=docker.from_env)
     completed: int = 0
     running: List[Benchmark] = field(default_factory=list)
     paused: List[Benchmark] = field(default_factory=list)
@@ -85,11 +141,77 @@ class JobManager:
             self.running.remove(benchmark)
 
         return completed_jobs
+    
+    def update(self, bench: Benchmark, cores: List[int], state: State) -> bool:
+        container = bench.container
+
+        # Relinquish previous cores for this job
+        if not bench.is_paused():
+            state.relinquish_cores(container)
+
+        # Update the cores used by the container
+        container.update(cpuset_cpus=f"{cores[0]}-{cores[1]}")
+
+        # Set the new cores to be used
+        if not bench.is_paused():
+            state.acquire_cores(container)
+
+    def pause(self, bench: Benchmark, state: State) -> bool:
+        container = bench.container
+        container.reload()
+
+        if container.status != "exited":
+            state.relinquish_cores(container)
+            container.pause()
+
+            self.paused.append(bench)
+            self.running.remove(bench)
+
+            return True
+        
+        return False
+
+    def unpause(self, bench: Benchmark, state: "State") -> bool:
+        container = bench.container
+        container.reload()
+
+        if container.status != "exited":
+            container.unpause()
+            # Update paused and running queues
+            self.paused.remove(bench)
+            self.running.append(bench)
+
+            # Add the new cores
+            state.acquire_cores(container)
+
+            return True
+        
+        return False
+
+    def run(self, bench: Benchmark, cores: List[int], state: State) -> None:
+        print(f"Now scheduling benchmark: {bench.name}")
+
+        container = self.client.containers.run(
+            image=bench.image,
+            command=f"./run -a run -S {bench.library} -p {bench.name} -i native -n {bench.thread_num}",
+            name=bench.name,
+            cpuset_cpus=f"{cores[0]}-{cores[-1]}",
+            detach=True,
+            remove=False,
+        )
+        bench.attach_container(container)  # Attach the container to the bench
+
+        # Set the cores used to True
+        state.acquire_cores(container)
+
+        # Add job to the running queue
+        self.running.append(bench)
+        self.pending.remove(bench)
 
     ############# GETTERS #############
     def get_running_by_core(self, cores: int) -> List[Benchmark]:
         result = [
-            benchmark for benchmark in self.running if benchmark.cores_num == cores
+            bench for bench in self.running if bench.cores_num == cores
         ]
         return result
 
@@ -135,51 +257,7 @@ class JobManager:
         return ret_str
 
 
-@dataclass(slots=True)
-class State:
-    load_cores: List[float]
-    load: Load
-    mc_utilization: float
-    job_manager: JobManager
-    cores_available: List[int]
-
-    def __str__(self):
-        ret_str = "--------------- STATE ---------------\n"
-        ret_str += f"MC Util:\t {self.mc_utilization}\n"
-        ret_str += f"LOAD:\t {self.load}\n"
-        ret_str += f"CORES AVAILABLE:\t {self.cores_available}\n"
-
-        return ret_str
-
-
 @dataclass
 class MemcachedThresholds:
     min_threshold: float = 80.0
     max_threshold: float = 90.0
-
-
-################# COMMANDS #################
-class Command:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class Run(Command):
-    benchmark: Benchmark
-    cores: List[int]
-
-
-@dataclass(frozen=True, slots=True)
-class Update(Command):
-    benchmark: Benchmark
-    cores: List[int]
-
-
-@dataclass(frozen=True, slots=True)
-class Pause(Command):
-    benchmark: Benchmark
-
-
-@dataclass(frozen=True, slots=True)
-class Unpause(Command):
-    benchmark: Benchmark

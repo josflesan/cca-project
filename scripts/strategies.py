@@ -4,7 +4,7 @@ from collections import deque, defaultdict
 from typing import Deque
 from docker.models.containers import Container
 
-from scheduler_logger import SchedulerLogger
+from utils.scheduler_logger import SchedulerLogger
 from utils.scheduler_utils import (
     JobManager,
     State,
@@ -37,7 +37,7 @@ class SchedulingStrategy(ABC):
         pass
 
     @abstractmethod
-    def on_job_complete(self, state: State) -> None:
+    def on_job_complete(self, completed_jobs: List[Benchmark], state: State) -> None:
         pass
 
     def pause(self, benchmark: Benchmark) -> None:
@@ -179,7 +179,7 @@ class ShittyStrategy(SchedulingStrategy):
             else:
                 raise RuntimeError("Should be unreachable")
     
-    def on_job_complete(self, state: State):        
+    def on_job_complete(self, copleted_jobs, state: State):        
         # can use inefficient operations here since this is only called 6 times
         num_cores_available = len(state.cores_available)
         
@@ -194,14 +194,74 @@ class ShittyStrategy(SchedulingStrategy):
             num_cores_available -= bench.cores_num
 
 
-class LongestJobFirst(SchedulingStrategy):
-    """No interference information, just runs jobs sequentially from longest to shortest"""
+class NoPauseStrategy(SchedulingStrategy):
+    """No interference information, run without pausing containers
+    
+    - Transition low -> high
+        if running 3 core job downscale to 2 core
+        if running 2 core and 1 core, colocate
+        if running 3 1-core jobs, colocate
+        # if running two 2 core jobs, colocate // if things are ordered well this shouldnt happen
+    
+    - Transition high -> low:
+        if running 3 core, upscale to 3 ore
+        if running 2 and 1, move 1 core to free core
+        if only running 2 check if theres pending 1 and running    
+        if running colocated 2 core jobs, make them overlap only in 1 core
+    """
 
-    def on_state_update(self, state):
-        return super().on_state_update(state)
+    def on_state_update(self, state: State) -> None:
+        job_manager = state.job_manager
+        if state.load == Load.HIGH:
+            running_3c = job_manager.get_running_by_core(3)
+            if running_3c:
+                self.update(running_3c[0], cores=state.cores_available)
+                return
+            
+            running_2c = job_manager.get_running_by_core(2)
+            running_1c = job_manager.get_running_by_core(1)
+            if running_1c and running_2c:
+                self.update(running_1c[0], cores=[2])
+                return
+            
+            if len(running_1c) == 3:
+                for benchmark in running_1c:
+                    cores = benchmark.container.attrs["HostConfig"]["CpusetCpus"].split("-")
+                    if "1" in cores:
+                        self.update(benchmark, cores=[2])
+                return
 
-    def on_job_complete(self, state):
-        return super().on_job_complete(state)
+
+            if len(running_2c) == 2:
+                self.update(running_2c[0], cores=[2, 3])
+                self.update(running_2c[1], cores=[2, 3])
+
+
+        else:
+            
+            running_3c = job_manager.get_running_by_core(3)
+            if running_3c:
+                self.update(running_3c[0], cores=state.cores_available)
+
+            running_2c = job_manager.get_running_by_core(2)
+            running_1c = job_manager.get_running_by_core(1)
+            pending_1c = job_manager.get_pending_by_core(1)
+            if running_2c:
+
+                if running_1c:
+                    self.update(running_1c[0], cores=[1])
+                if pending_1c:
+                    self.run(pending_1c[0], cores=[1])
+
+            pass
+
+    def on_job_complete(self, completed_jobs, state: State) -> None:
+        job_manager = state.job_manager
+        if state.cores_available:
+            next_benchmark = job_manager.get_highest_pending()
+            cores_to_occupy = min(len(state.cores_available), next_benchmark.cores_num)
+            self.run(next_benchmark, state.cores_available[-cores_to_occupy:])
+        # just schedule next highest prio job
 
 
 class ShortestJobFirst(SchedulingStrategy):

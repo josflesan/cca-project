@@ -1,12 +1,14 @@
+import argparse
 import subprocess
 from typing import List
 
 import docker
 import psutil
 from docker.models.containers import Container
-from scheduler_logger import Job, SchedulerLogger
+from utils.scheduler_logger import Job, SchedulerLogger
 from strategies import SchedulingStrategy, ShittyStrategy
 from utils.scheduler_utils import (
+    update_config,
     Benchmark,
     JobManager,
     Load,
@@ -17,6 +19,28 @@ from utils.scheduler_utils import (
     Unpause,
     Update,
 )
+import time
+import sys
+import signal
+import atexit
+
+
+def signal_handler(*args, **kwargs):
+    """Handle CTRL+C and other termination signals"""
+    print("\nExiting gracefully...")
+    mc_pid = (
+        subprocess.run("sudo pidof memcached", shell=True, capture_output=True)
+        .stdout.decode()
+        .strip()
+        )
+
+    client = docker.from_env()
+    for container in client.containers.list():
+        print(f"Killing Container: {container.name}")
+        container.stop()
+
+    client.containers.prune()
+    sys.exit(0)
 
 
 class Controller:
@@ -29,10 +53,11 @@ class Controller:
         self.cores_used[0] = True
         # Get PID of memcached process and save process
         mc_pid = (
-            subprocess.run("pidof memcached", shell=True, capture_output=True)
+            subprocess.run("sudo pidof memcached", shell=True, capture_output=True)
             .stdout.decode()
             .strip()
         )
+        print("mc_pid: ", mc_pid)
         self.mc_process = psutil.Process(int(mc_pid))
         # Initial load is LOW
         self.current_load = Load.LOW
@@ -68,18 +93,20 @@ class Controller:
         mc_util = self.mc_process.cpu_percent()
         mc_cores = len(self.mc_process.cpu_affinity())
 
+        print(f"MEMCACHED CORES: {mc_cores}")
+
         # Determine if high or low load based on thresholds
         load = self.current_load
         if mc_cores == 1 and mc_util >= self.cpu_thresholds.max_threshold:
             load = Load.HIGH
         elif mc_cores == 2 and mc_util < self.cpu_thresholds.min_threshold:
             load = Load.LOW
-
-        # Get cores available
+    
+        # Get cores availabl
         cores_available = self._get_available_cores()
 
         # Return state
-        return State(cpu_perc_util, load, self.job_manager, cores_available)
+        return State(cpu_perc_util, load, mc_util, self.job_manager, cores_available)
 
     def _handle_run(self, benchmark: Benchmark, cores: List[int]) -> None:
         job_manager = self.job_manager
@@ -159,10 +186,47 @@ class Controller:
             print(f"Relinquishing core {core}...")
             self.cores_used[core] = False
 
+    def launch_memcached(self, threads: int, core_start: str, core_end: str):
+        # 1. Copy memcached config to the home directory and update it
+        subprocess.run("cp /etc/memcached.conf ~/", shell=True, check=True)
+        with open("/home/ubuntu/memcached.conf", "r") as f:
+            config = f.read()
+
+        updated_config = update_config(config, threads=threads)
+
+        with open("/home/ubuntu/memcached.conf", "w") as f:
+            f.write(updated_config)
+
+        # 2. Move memcached config with sudo privileges
+        subprocess.run(
+            "sudo mv /home/ubuntu/memcached.conf /etc/memcached.conf", shell=True
+        )
+
+        # 3. Restart service
+        subprocess.run("sudo systemctl restart memcached", shell=True)
+
+        # 4. Pin memcached to cores
+        subprocess.run(
+            f"sudo taskset -a -cp {core_start}-{core_end} {self.mc_process.pid}",
+            shell=True,
+            capture_output=True,
+        )
+
+        # Log memcached initial run
+        self.logger.job_start(
+            Job.MEMCACHED,
+            [str(core) for core in range(int(core_start), int(core_end) + 1)],
+            threads,
+        )
+
     def update_memcached(self, new_load: Load) -> None:
         cores = ["0"]
         if new_load == Load.HIGH:
             cores.append("1")
+            self.cores_used[1] = True            
+        else:
+            #! we are assuming that nothing will be coscheduled to memcached
+            self.cores_used[1] = False
 
         subprocess.run(
             f"sudo taskset -a -cp {cores[0]}-{cores[-1]} {self.mc_process.pid}",
@@ -177,6 +241,8 @@ class Controller:
         for command in strategy.command_buffer:
             match command:
                 case Run(benchmark, cores):
+                    print(f"NEXT BENCHMARK: {benchmark}")
+                    print(f"NEXT CORES: {cores}")
                     self._handle_run(benchmark, cores)
                 case Pause(benchmark):
                     self._handle_pause(benchmark)
@@ -190,7 +256,7 @@ class Controller:
 
     def run_strategy(self, strategy: SchedulingStrategy):
         self.job_manager.pending = strategy.ordering
-        first_benchmark = max(self.job_manager.pending, lambda b: b.priority)
+        first_benchmark = self.job_manager.get_highest_pending()
         self._handle_run(
             first_benchmark,
             cores=sorted(
@@ -200,9 +266,10 @@ class Controller:
             ),
         )
 
+        tick = 0
         while True:
-            print(self.job_manager)
-
+            time.sleep(1)    
+                    
             # Figure out if any jobs completed
             jobs_completed = self.job_manager.check_completed_jobs()
 
@@ -216,35 +283,62 @@ class Controller:
 
             # Get the new state
             state = self._get_state()
-            print(state)
+
+            if tick % 5 == 0:
+                print(self.job_manager)
+                print(state)
+
             if jobs_completed:
+                print(state)
                 strategy.on_job_complete(jobs_completed, state)
                 self.flush_buffer(strategy)
             elif state.load != self.current_load:
+                print(state)
                 self.update_memcached(state.load)  # Update memcached
                 self.current_load = state.load
                 strategy.on_state_update(state)
                 self.flush_buffer(strategy)
 
+            tick += 1
+
 
 def main():
+    atexit.register(signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
+    signal.signal(signal.SIGABRT, signal_handler)  # Crash
+
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run", action="store_true")
+    args = parser.parse_args()
+
     # Initialize the controller
     thresholds = MemcachedThresholds()
     controller = Controller(question=3, cpu_thresholds=thresholds)
-
-    # Initialize ordering and strategy
-    ORDER = [
-        Benchmark("ferret", priority=1, thread_num=3, cores_num=3),
-        Benchmark("freqmine", priority=2, thread_num=3, cores_num=3),
-        Benchmark("canneal", priority=3, thread_num=2, cores_num=2),
-        Benchmark("dedup", priority=3, thread_num=1, cores_num=1),
-        Benchmark("radix", priority=3, thread_num=4, cores_num=1, library="splash2x"),
-        Benchmark("blackscholes", priority=3, thread_num=3, cores_num=1),
-        Benchmark("vips", priority=4, thread_num=3, cores_num=2),
-    ]
-    strat = ShittyStrategy(ordering=ORDER, colocations=None, logger=controller.logger)
-    # Execute the strategy
-    controller.run_strategy(strat)
+    
+    if args.run:
+        # Initialize ordering and strategy
+        ORDER = [
+            Benchmark("ferret", priority=1, thread_num=3, cores_num=3),
+            Benchmark("freqmine", priority=2, thread_num=3, cores_num=3),
+            Benchmark("canneal", priority=3, thread_num=2, cores_num=2),
+            Benchmark("dedup", priority=3, thread_num=1, cores_num=1),
+            Benchmark("radix", priority=3, thread_num=4, cores_num=1, library="splash2x"),
+            Benchmark("blackscholes", priority=3, thread_num=3, cores_num=1),
+            Benchmark("vips", priority=4, thread_num=3, cores_num=2),
+        ]
+        strat = ShittyStrategy(ordering=ORDER, colocations=None, logger=controller.logger)
+        
+        # Execute the strategy
+        controller.run_strategy(strat)
+    else:
+        controller.launch_memcached(
+            threads=2,
+            core_start="0",
+            core_end="0"
+        )
+        print("Launched Memcached!")
 
 
 if __name__ == "__main__":

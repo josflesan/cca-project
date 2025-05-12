@@ -5,9 +5,11 @@ from ..scheduler_logger import SchedulerLogger, Job
 import enum
 from enum import Enum
 
+
 class Load(Enum):
-    LOW = enum.auto(),
+    LOW = enum.auto()
     HIGH = enum.auto()
+
 
 @dataclass
 class Benchmark:
@@ -27,11 +29,18 @@ class Benchmark:
 
     def to_job(self) -> Job:
         return Job._member_map_[self.name.upper()]
-    
+
     def attach_container(self, container: Container) -> None:
         self.container = container
 
-    
+    def is_paused(self):
+        # Maybe we have to reload, dont think so tho
+        return self.container and self.container.status == "paused"
+
+    def __str__(self):
+        return f"Benchmark(name={self.name}, cores_num={self.cores_num}, priority={self.prio})"
+
+
 @dataclass
 class JobManager:
     completed: int = 0
@@ -56,15 +65,21 @@ class JobManager:
 
     ############# GETTERS #############
     def get_running_by_core(self, cores: int) -> List[Benchmark]:
-        result = [benchmark for benchmark in self.running if benchmark.cores_num == cores]
+        result = [
+            benchmark for benchmark in self.running if benchmark.cores_num == cores
+        ]
         return result
-    
+
     def get_paused_by_core(self, cores: int) -> List[Benchmark]:
-        result = [benchmark for benchmark in self.paused if benchmark.cores_num == cores]
+        result = [
+            benchmark for benchmark in self.paused if benchmark.cores_num == cores
+        ]
         return result
 
     def get_pending_by_core(self, cores: int) -> List[Benchmark]:
-        result = [benchmark for benchmark in self.pending if benchmark.cores_num == cores]
+        result = [
+            benchmark for benchmark in self.pending if benchmark.cores_num == cores
+        ]
         return result
 
     def get_num_completed(self) -> int:
@@ -72,21 +87,42 @@ class JobManager:
 
     def get_num_running(self) -> int:
         return len(self.running)
-    
+
     def get_num_paused(self) -> int:
         return len(self.paused)
-    
+
     def get_num_pending(self) -> int:
         return len(self.pending)
+
     def get_non_running(self) -> list:
-        return  self.paused + self.pending
+        return self.paused + self.pending
+    
+    ############# MAGIC METHODS #############
+
+    def __str__(self):
+        ret_str = "--------------- JOB MANAGER ---------------\n"
+        ret_str += f"COMPLETED:\t {self.completed}\n"
+        ret_str += f"RUNNING:\t {self.running}\n"
+        ret_str += f"PAUSED:\t {self.paused}\n"
+        ret_str += f"PENDING:\t {self.pending}\n"
+
+        return ret_str
+
 
 @dataclass(slots=True)
 class State:
     load_cores: List[float]
     load_enum: Load
-    job_queues: JobManager
+    job_manager: JobManager
     cores_available: List[int]
+
+    def __str__(self):
+        ret_str = "--------------- STATE ---------------\n"
+        ret_str += f"LOAD:\t {self.load_enum}\n"
+        ret_str += f"CORES AVAILABLE:\t {self.cores_available}\n"
+
+        return ret_str
+
 
 @dataclass
 class MemcachedThresholds:
@@ -98,20 +134,24 @@ class MemcachedThresholds:
 class Command:
     pass
 
-@dataclass(frozen=True,slots=True)
+
+@dataclass(frozen=True, slots=True)
 class Run(Command):
-   benchmark: Benchmark
-   cores: List[int]
+    benchmark: Benchmark
+    cores: List[int]
 
-@dataclass(frozen=True,slots=True)
+
+@dataclass(frozen=True, slots=True)
 class Update(Command):
-   benchmark: Benchmark
-   cores: List[int]
+    benchmark: Benchmark
+    cores: List[int]
 
-@dataclass(frozen=True,slots=True)
+
+@dataclass(frozen=True, slots=True)
 class Pause(Command):
-   benchmark: Benchmark
+    benchmark: Benchmark
 
-@dataclass(frozen=True,slots=True)
+
+@dataclass(frozen=True, slots=True)
 class Unpause(Command):
-   benchmark: Benchmark
+    benchmark: Benchmark

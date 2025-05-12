@@ -1,28 +1,26 @@
-import docker
-import argparse
 import subprocess
-import psutil
 from typing import List
-from docker.models.containers import Container
 
-from strategies import SchedulingStrategy
-from scheduler_logger import SchedulerLogger, Job
+import docker
+import psutil
+from docker.models.containers import Container
+from scheduler_logger import Job, SchedulerLogger
+from strategies import SchedulingStrategy, ShittyStrategy
 from utils.scheduler_utils import (
-    MemcachedThresholds,
     Benchmark,
-    Load,
     JobManager,
-    State,
-    Run,
-    Update,
+    Load,
+    MemcachedThresholds,
     Pause,
+    Run,
+    State,
     Unpause,
+    Update,
 )
 
 
 class Controller:
-    def __init__(self, question: int, cpu_thresholds: MemcachedThresholds, benchmarks):
-
+    def __init__(self, question: int, cpu_thresholds: MemcachedThresholds):
         # Initialize client and logger
         self.client = self._init_client()
         self.logger = SchedulerLogger(question=question)
@@ -39,8 +37,7 @@ class Controller:
         # Initial load is LOW
         self.current_load = Load.LOW
         # Get the job manager
-        # ? maybe not start with pending benchmarks
-        self.job_manager = JobManager(pending=benchmarks)
+        self.job_manager = JobManager()
 
     def _init_client(self):
         # Give docker sudo permissions
@@ -86,6 +83,7 @@ class Controller:
 
     def _handle_run(self, benchmark: Benchmark, cores: List[int]) -> None:
         job_manager = self.job_manager
+
         print(f"Now scheduling benchmark: {benchmark.name}")
 
         container = self.client.containers.run(
@@ -96,6 +94,7 @@ class Controller:
             detach=True,
             remove=False,
         )
+        benchmark.attach_container(container)  # Attach the container to the benchmark
 
         # Set the cores used to True
         for core in cores:
@@ -176,7 +175,7 @@ class Controller:
         Flushes the buffer by executing every command and reseting the buffer
         """
         for command in strategy.command_buffer:
-            match (command):
+            match command:
                 case Run(benchmark, cores):
                     self._handle_run(benchmark, cores)
                 case Pause(benchmark):
@@ -190,8 +189,20 @@ class Controller:
         strategy.command_buffer = []
 
     def run_strategy(self, strategy: SchedulingStrategy):
+        self.job_manager.pending = strategy.ordering
+        first_benchmark = max(self.job_manager.pending, lambda b: b.priority)
+        self._handle_run(
+            first_benchmark,
+            cores=sorted(
+                [core for core in self.cores_used if not self.cores_used[core]][
+                    : first_benchmark.cores_num
+                ]
+            ),
+        )
 
         while True:
+            print(self.job_manager)
+
             # Figure out if any jobs completed
             jobs_completed = self.job_manager.check_completed_jobs()
 
@@ -205,6 +216,7 @@ class Controller:
 
             # Get the new state
             state = self._get_state()
+            print(state)
             if jobs_completed:
                 strategy.on_job_complete(jobs_completed, state)
                 self.flush_buffer(strategy)
@@ -216,7 +228,23 @@ class Controller:
 
 
 def main():
-    pass
+    # Initialize the controller
+    thresholds = MemcachedThresholds()
+    controller = Controller(question=3, cpu_thresholds=thresholds)
+
+    # Initialize ordering and strategy
+    ORDER = [
+        Benchmark("ferret", priority=1, thread_num=3, cores_num=3),
+        Benchmark("freqmine", priority=2, thread_num=3, cores_num=3),
+        Benchmark("canneal", priority=3, thread_num=2, cores_num=2),
+        Benchmark("dedup", priority=3, thread_num=1, cores_num=1),
+        Benchmark("radix", priority=3, thread_num=4, cores_num=1, library="splash2x"),
+        Benchmark("blackscholes", priority=3, thread_num=3, cores_num=1),
+        Benchmark("vips", priority=4, thread_num=3, cores_num=2),
+    ]
+    strat = ShittyStrategy(ordering=ORDER, colocations=None, logger=controller.logger)
+    # Execute the strategy
+    controller.run_strategy(strat)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from typing import List
 
 import docker
 import psutil
-from strategies import SchedulingStrategy, ShittyStrategy
+from strategies import SchedulingStrategy, IsolationStrategy, ScalingStrategy, ScalingStrategyPauseFerret
 from utils.scheduler_logger import Job, SchedulerLogger
 from utils.scheduler_utils import (
     Benchmark,
@@ -89,8 +89,6 @@ class Controller:
         mc_util = self.mc_process.cpu_percent()
         mc_cores = len(self.mc_process.cpu_affinity())
 
-        print(f"MEMCACHED CORES: {mc_cores}")
-
         # Determine if high or low load based on thresholds
         load = self.current_load
         if mc_cores == 1 and mc_util >= self.cpu_thresholds.max_threshold:
@@ -125,7 +123,6 @@ class Controller:
         subprocess.run(
             f"sudo taskset -a -cp {core_start}-{core_end} {self.mc_process.pid}",
             shell=True,
-            capture_output=True,
         )
 
         # Log memcached initial run
@@ -135,14 +132,14 @@ class Controller:
             threads,
         )
 
-    def update_memcached(self, state: State) -> None:
+    def update_memcached(self) -> None:
         cores = ["0"]
-        if state.load == Load.HIGH:
+        if self.state.load == Load.HIGH:
             cores.append("1")
-            state.acquire_cores_manual([0, 1], "memcached")
+            self.state.acquire_cores_manual([0, 1], "memcached")
         else:
             #! we are assuming that nothing will be coscheduled to memcached
-            state.relinquish_cores_manual([1], "memcached")
+            self.state.relinquish_cores_manual([1], "memcached")
 
         subprocess.run(
             f"sudo taskset -a -cp {cores[0]}-{cores[-1]} {self.mc_process.pid}",
@@ -152,24 +149,31 @@ class Controller:
 
     def run_strategy(self, strategy: SchedulingStrategy):
         self.job_manager.pending = strategy.ordering
-        first_benchmark = self.job_manager.get_highest_pending()
+        # first_benchmark = self.job_manager.get_highest_pending()
         self.update_state()
-        strategy.run(first_benchmark, cores=sorted(
-            [core for core in self.cores_used if not self.cores_used[core]]
-        )[:first_benchmark.cores_num], state=self.state, job_manager=self.job_manager)
+        
+        strategy.on_job_complete([], self.state, self.job_manager)
+        # strategy.run(first_benchmark, cores=sorted(
+        #     [core for core in self.cores_used if not self.cores_used[core]]
+        # )[-first_benchmark.cores_num:], state=self.state, job_manager=self.job_manager)
 
         tick = 0
+        cooldown = 5
+        start = time.perf_counter()
         while True:
             time.sleep(1)
             # Figure out if any jobs completed
-            jobs_completed = self.job_manager.check_completed_jobs()
+            jobs_completed = self.job_manager.check_completed_jobs()            
+
+            # Relinquish finished containers
+            for benchmark in jobs_completed:
+                self.logger.job_end(benchmark.to_job())
+                self.state.relinquish_cores(benchmark.container)
+            
             # If all jobs completed we terminate
             if self.job_manager.get_num_completed() == 7:
                 break
-            # Relinquish finished containers
-            for benchmark in jobs_completed:
-                self.job_manager.relinquish_cores(benchmark.container)
-            
+        
             # Get the new state
             self.update_state()
             if tick % 5 == 0:
@@ -180,13 +184,27 @@ class Controller:
                 print(self.job_manager)
                 print(self.state)
                 strategy.on_job_complete(jobs_completed, self.state, self.job_manager)
-            elif self.state.load != self.current_load:
+            elif cooldown < 0 and self.state.load != self.current_load:
+                cooldown = 5
                 print(self.job_manager)
                 print(self.state)
-                self.update_memcached(self.state)  # Update memcached
+                self.update_memcached()  # Update memcached
                 self.current_load = self.state.load
                 strategy.on_state_update(self.state, self.job_manager)
             tick += 1
+            cooldown -= 1
+
+
+        end = time.perf_counter()
+        makespan = (end - start) / 60
+
+        self.logger.custom_event(
+            Job.SCHEDULER, f"Total program makespan: {makespan:.4f} minutes"
+        )
+        print(f"Total program makespan: {makespan:.4f} minutes")
+
+        self.job_manager.client.containers.prune()
+        self.logger.end()
 
 
 def main():
@@ -205,18 +223,40 @@ def main():
 
     if args.run:
         # Initialize ordering and strategy
+
+        # ShittyStrategy order
+        # ORDER = [
+        #     Benchmark("ferret", priority=1, thread_num=3, cores_num=3),
+        #     Benchmark("freqmine", priority=2, thread_num=3, cores_num=3),
+        #     Benchmark("canneal", priority=3, thread_num=2, cores_num=2),
+        #     Benchmark("dedup", priority=3, thread_num=1, cores_num=1),
+        #     Benchmark(
+        #         "radix", priority=3, thread_num=4, cores_num=1, library="splash2x"
+        #     ),
+        #     Benchmark("blackscholes", priority=3, thread_num=3, cores_num=1),
+        #     Benchmark("vips", priority=4, thread_num=3, cores_num=2),
+        # ]
+
+        # ScalingStrategy order
+
+        # i think we want somthing similar to ferret for vips, 
+
         ORDER = [
             Benchmark("ferret", priority=1, thread_num=3, cores_num=3),
             Benchmark("freqmine", priority=2, thread_num=3, cores_num=3),
+            # Canneal + Radix is not too bad
+            #TODO: maybe we want canneal to 3 cores and blackscholes to 2?
             Benchmark("canneal", priority=3, thread_num=2, cores_num=2),
-            Benchmark("dedup", priority=3, thread_num=1, cores_num=1),
             Benchmark(
-                "radix", priority=3, thread_num=4, cores_num=1, library="splash2x"
+                "radix", priority=4, thread_num=4, cores_num=1, library="splash2x"
             ),
-            Benchmark("blackscholes", priority=3, thread_num=3, cores_num=1),
-            Benchmark("vips", priority=4, thread_num=3, cores_num=2),
+
+            # Vips first because 2 core, blackscholes first because it takes longer than dedup + more lenient
+            Benchmark("blackscholes", priority=6, thread_num=3, cores_num=1),
+            Benchmark("dedup", priority=7, thread_num=1, cores_num=1),
+            Benchmark("vips", priority=5, thread_num=3, cores_num=2),
         ]
-        strat = ShittyStrategy(
+        strat = ScalingStrategy(
             ordering=ORDER, colocations=None, logger=controller.logger
         )
 

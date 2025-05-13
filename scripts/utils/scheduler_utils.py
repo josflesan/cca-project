@@ -74,7 +74,11 @@ class State:
     cores_used: Dict[int, Set[str]] = field(default_factory=lambda: defaultdict(set))
 
     def __post_init__(self):
-        self.cores_used["0"].add("memcache")
+        self.cores_used = {i: set() for i in range(4)}
+        self.cores_used[0].add("memcached")
+        
+        # At the beginning we have 3 cores available
+        self.cores_available = [1, 2, 3]
 
     def update_state(self, **kwargs):
         self.load_cores = kwargs.get("load_cores", self.load)
@@ -82,6 +86,8 @@ class State:
         self.mc_utilization = kwargs.get("mc_utilization", self.mc_utilization)
 
     def acquire_cores(self, container: Container):
+        # TODO: maybe delete if this doesnt fix
+        container.reload()
         core_start, core_end = container.attrs["HostConfig"]["CpusetCpus"].split("-")
         for core in range(int(core_start), int(core_end) + 1):
             self.cores_used[core].add(container.name)
@@ -91,7 +97,8 @@ class State:
 
     def acquire_cores_manual(self, cores: List[int], job: str):
         for core in cores:
-            self.cores_used[core].add(job)
+            if job not in self.cores_used[core]:
+                self.cores_used[core].add(job)
         
         # Update cores available
         self.cores_available = sorted([core for core, used in self.cores_used.items() if not used])
@@ -116,6 +123,7 @@ class State:
         ret_str += f"MC Util:\t {self.mc_utilization}\n"
         ret_str += f"LOAD:\t {self.load}\n"
         ret_str += f"CORES AVAILABLE:\t {self.cores_available}\n"
+        ret_str += f"CORES USED:\t {self.cores_used}\n"
 
         return ret_str
 
@@ -144,22 +152,22 @@ class JobManager:
     
     def update(self, bench: Benchmark, cores: List[int], state: State) -> bool:
         container = bench.container
+        container.reload()
 
         # Relinquish previous cores for this job
-        if not bench.is_paused():
+        if bench in self.running:
             state.relinquish_cores(container)
 
         # Update the cores used by the container
-        container.update(cpuset_cpus=f"{cores[0]}-{cores[1]}")
+        container.update(cpuset_cpus=f"{cores[0]}-{cores[-1]}")
 
         # Set the new cores to be used
-        if not bench.is_paused():
+        if bench in self.running:
             state.acquire_cores(container)
 
     def pause(self, bench: Benchmark, state: State) -> bool:
         container = bench.container
         container.reload()
-
         if container.status != "exited":
             state.relinquish_cores(container)
             container.pause()
@@ -189,7 +197,7 @@ class JobManager:
         return False
 
     def run(self, bench: Benchmark, cores: List[int], state: State) -> None:
-        print(f"Now scheduling benchmark: {bench.name}")
+        print(f"Starting benchmark creation: {bench.name}")
 
         container = self.client.containers.run(
             image=bench.image,
@@ -199,16 +207,32 @@ class JobManager:
             detach=True,
             remove=False,
         )
+        print(f"Finished benchmark creation: {bench.name}")
+        
         bench.attach_container(container)  # Attach the container to the bench
 
         # Set the cores used to True
         state.acquire_cores(container)
 
+        print(f"Finished acquiring cores for: {bench.name}")
+
         # Add job to the running queue
         self.running.append(bench)
         self.pending.remove(bench)
 
+
     ############# GETTERS #############
+    def get_jobs_on_core(self, core: str) -> List[Benchmark]:
+        relevant = []
+        for benchmark in self.running:
+            cores = benchmark.container.attrs["HostConfig"]["CpusetCpus"].split("-")
+
+            # Move the one that was running on memcached core to safe core
+            if str(core) in cores:
+                relevant.append(benchmark)
+
+        return relevant
+    
     def get_running_by_core(self, cores: int) -> List[Benchmark]:
         result = [
             bench for bench in self.running if bench.cores_num == cores
@@ -259,5 +283,5 @@ class JobManager:
 
 @dataclass
 class MemcachedThresholds:
-    min_threshold: float = 80.0
+    min_threshold: float = 100.0
     max_threshold: float = 90.0

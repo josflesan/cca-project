@@ -116,9 +116,10 @@ if __name__ == "__main__":
     subprocess.run(f"gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing {script_path} ubuntu@{server}:~/ --zone europe-west1-b", shell=True)
     subprocess.run(f"gcloud compute ssh --ssh-key-file ~/.ssh/cloud-computing ubuntu@{server} --zone europe-west1-b --command='bash ~/$(basename {script_path})'", shell=True)
 
-    # SCP scheduler and scheduler_logger files
-    subprocess.run(f"gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing scripts/scheduler.py ubuntu@{server}:~/ --zone europe-west1-b", shell=True)
+    # SCP scheduler, scheduler_logger and memcached launch files
+    subprocess.run(f"gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing scripts/scheduler_v2.py ubuntu@{server}:~/ --zone europe-west1-b", shell=True)
     subprocess.run(f"gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing scripts/scheduler_logger.py ubuntu@{server}:~/ --zone europe-west1-b", shell=True)
+    subprocess.run(f"gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing scripts/setup/start_memcached_part4.py ubuntu@{server}:~/ --zone europe-west1-b", shell=True)
     update_bash_script("scripts/setup/send_logger.bash", server=internal_server_ip)
 
     # Output relevant cluster information to text file

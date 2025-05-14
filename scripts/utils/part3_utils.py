@@ -8,6 +8,7 @@ from .convert_to_csv import convert_to_csv
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, Tuple, List
+from pathlib import Path
 
 
 @dataclasses.dataclass
@@ -166,7 +167,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=str, help="Path to the timings for part 3")
     args = parser.parse_args()
-
-
     compute_mean_std(args.file)
     compute_mean_std(args.file)

@@ -283,5 +283,5 @@ class JobManager:
 
 @dataclass
 class MemcachedThresholds:
-    min_threshold: float = 100.0
-    max_threshold: float = 90.0
+    min_threshold: float = 90.0
+    max_threshold: float = 80.0

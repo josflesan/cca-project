@@ -252,9 +252,9 @@ def main():
             ),
 
             # Vips first because 2 core, blackscholes first because it takes longer than dedup + more lenient
+            Benchmark("vips", priority=5, thread_num=3, cores_num=2),
             Benchmark("blackscholes", priority=6, thread_num=3, cores_num=1),
             Benchmark("dedup", priority=7, thread_num=1, cores_num=1),
-            Benchmark("vips", priority=5, thread_num=3, cores_num=2),
         ]
         strat = ScalingStrategy(
             ordering=ORDER, colocations=None, logger=controller.logger

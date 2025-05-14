@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SERVER=memcache-server-z7lt
+SERVER=memcache-server-9tbf
 
 gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing scripts/scheduler_v2.py ubuntu@$SERVER:~/src/scheduler.py --zone europe-west1-b
 gcloud compute scp --ssh-key-file ~/.ssh/cloud-computing scripts/strategies.py ubuntu@$SERVER:~/src --zone europe-west1-b

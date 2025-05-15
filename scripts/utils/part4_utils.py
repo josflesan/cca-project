@@ -10,6 +10,7 @@ import pandas as pd
 class Part4PlotData:
     df: pd.DataFrame
     start_events: Dict[str, float]
+    end_events: Dict[str, float]
     pause_events: Dict[str, List[float]]
     unpause_events: Dict[str, List[float]]
 
@@ -170,6 +171,11 @@ def prepare_part4_plot_data(
         for job, benchmark_start in parsed_logfile["starts"].items()
     }
 
+    end_events = {
+        job: max((benchmark_end - start_ts).total_seconds(), 0)
+        for job, benchmark_end in parsed_logfile["ends"].items()
+    }
+
     pause_events = {
         job: [(pause_ts - start_ts).total_seconds() for pause_ts in bench_pauses]
         for job, bench_pauses in parsed_logfile["paused"].items()
@@ -180,4 +186,4 @@ def prepare_part4_plot_data(
         for job, bench_unpauses in parsed_logfile["unpaused"].items()
     }
 
-    return Part4PlotData(plot_df, start_events, pause_events, unpause_events)
+    return Part4PlotData(plot_df, start_events, end_events, pause_events, unpause_events)

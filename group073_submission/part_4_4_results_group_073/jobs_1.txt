@@ -1,0 +1,80 @@
+2025-05-15T21:15:20.381610 start scheduler
+2025-05-15T21:15:21.564219 start ferret [1,2,3] 3
+2025-05-15T21:15:35.614535 update_cores memcached [0,1]
+2025-05-15T21:15:35.657728 update_cores ferret [2,3]
+2025-05-15T21:15:51.710470 update_cores memcached [0]
+2025-05-15T21:15:51.739330 update_cores ferret [1,2,3]
+2025-05-15T21:16:01.789095 update_cores memcached [0,1]
+2025-05-15T21:16:01.828589 update_cores ferret [2,3]
+2025-05-15T21:18:34.203283 update_cores memcached [0]
+2025-05-15T21:18:34.233893 update_cores ferret [1,2,3]
+2025-05-15T21:18:52.307508 update_cores memcached [0,1]
+2025-05-15T21:18:52.355551 update_cores ferret [2,3]
+2025-05-15T21:19:02.392849 update_cores memcached [0]
+2025-05-15T21:19:02.422169 update_cores ferret [1,2,3]
+2025-05-15T21:19:19.455184 end ferret
+2025-05-15T21:19:20.667175 start canneal [2,3] 2
+2025-05-15T21:19:20.873731 start radix [1] 4
+2025-05-15T21:19:22.899683 update_cores memcached [0,1]
+2025-05-15T21:19:22.938771 update_cores radix [2]
+2025-05-15T21:20:05.111855 update_cores memcached [0]
+2025-05-15T21:20:05.141683 update_cores radix [1]
+2025-05-15T21:20:16.173124 end radix
+2025-05-15T21:20:17.374318 start blackscholes [1] 1
+2025-05-15T21:20:23.425235 update_cores memcached [0,1]
+2025-05-15T21:20:23.466990 update_cores blackscholes [2]
+2025-05-15T21:20:31.521879 update_cores memcached [0]
+2025-05-15T21:20:32.501473 update_cores blackscholes [1]
+2025-05-15T21:20:40.552811 update_cores memcached [0,1]
+2025-05-15T21:20:40.599720 update_cores blackscholes [2]
+2025-05-15T21:21:08.706705 update_cores memcached [0]
+2025-05-15T21:21:08.737463 update_cores blackscholes [1]
+2025-05-15T21:21:42.884581 update_cores memcached [0,1]
+2025-05-15T21:21:42.933345 update_cores blackscholes [2]
+2025-05-15T21:22:29.111328 update_cores memcached [0]
+2025-05-15T21:22:29.136088 update_cores blackscholes [1]
+2025-05-15T21:22:55.037055 end blackscholes
+2025-05-15T21:22:56.290541 start dedup [1] 1
+2025-05-15T21:23:06.341905 update_cores memcached [0,1]
+2025-05-15T21:23:06.391159 update_cores dedup [2]
+2025-05-15T21:23:14.100090 end canneal
+2025-05-15T21:23:16.003042 start vips [3] 2
+2025-05-15T21:23:24.047550 update_cores memcached [0]
+2025-05-15T21:23:24.077731 update_cores dedup [1]
+2025-05-15T21:23:43.371160 end dedup
+2025-05-15T21:23:44.401256 update_cores vips [2,3]
+2025-05-15T21:23:44.676274 start freqmine [1] 3
+2025-05-15T21:23:46.709747 update_cores memcached [0,1]
+2025-05-15T21:23:46.772699 update_cores freqmine [2,3]
+2025-05-15T21:23:48.795126 update_cores memcached [0]
+2025-05-15T21:23:48.823617 update_cores freqmine [1,2,3]
+2025-05-15T21:24:24.968280 update_cores memcached [0,1]
+2025-05-15T21:24:25.008031 update_cores freqmine [2,3]
+2025-05-15T21:24:35.052591 update_cores memcached [0]
+2025-05-15T21:24:35.077939 update_cores freqmine [1,2,3]
+2025-05-15T21:24:45.153268 update_cores memcached [0,1]
+2025-05-15T21:24:45.192558 update_cores freqmine [2,3]
+2025-05-15T21:24:51.968442 end vips
+2025-05-15T21:24:54.990662 update_cores memcached [0]
+2025-05-15T21:24:55.019334 update_cores freqmine [1,2,3]
+2025-05-15T21:25:01.060295 update_cores memcached [0,1]
+2025-05-15T21:25:01.101931 update_cores freqmine [2,3]
+2025-05-15T21:25:37.192900 update_cores memcached [0]
+2025-05-15T21:25:37.220099 update_cores freqmine [1,2,3]
+2025-05-15T21:26:21.339332 update_cores memcached [0,1]
+2025-05-15T21:26:21.387242 update_cores freqmine [2,3]
+2025-05-15T21:26:49.462632 update_cores memcached [0]
+2025-05-15T21:26:49.491642 update_cores freqmine [1,2,3]
+2025-05-15T21:26:59.537314 update_cores memcached [0,1]
+2025-05-15T21:26:59.577492 update_cores freqmine [2,3]
+2025-05-15T21:27:25.653546 update_cores memcached [0]
+2025-05-15T21:27:25.681187 update_cores freqmine [1,2,3]
+2025-05-15T21:27:35.726517 update_cores memcached [0,1]
+2025-05-15T21:27:35.770561 update_cores freqmine [2,3]
+2025-05-15T21:27:43.804891 update_cores memcached [0]
+2025-05-15T21:27:43.830852 update_cores freqmine [1,2,3]
+2025-05-15T21:28:01.900012 update_cores memcached [0,1]
+2025-05-15T21:28:01.943869 update_cores freqmine [2,3]
+2025-05-15T21:28:14.973304 end freqmine
+2025-05-15T21:28:14.973452 custom scheduler Total+program+makespan%3A+12.8902+minutes
+2025-05-15T21:28:16.185619 end scheduler
